@@ -8,6 +8,8 @@ import { format } from 'date-fns';
 import { ArrowLeft, Calendar, Clock, MapPin, TrendingUp, Target, Download, Mail } from 'lucide-react';
 import Link from 'next/link';
 
+
+
 export default function DriverDetailPage() {
   const params = useParams();
   const driverId = params.driverId as string;
