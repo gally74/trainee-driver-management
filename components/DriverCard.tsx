@@ -170,7 +170,7 @@ export function DriverCard({ driver }: DriverCardProps) {
       {/* Action Buttons */}
       <div className="flex space-x-2">
         <Link 
-          href={`/driver/${driver.id}`}
+          href={`/driver?id=${driver.id}`}
           className="btn-primary flex-1 text-center text-sm"
         >
           View Details

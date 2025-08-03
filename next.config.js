@@ -1,6 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Remove static export for now - will deploy as regular Next.js app
+  output: 'export',
+  trailingSlash: true,
+  images: {
+    unoptimized: true
+  },
+  basePath: process.env.NODE_ENV === 'production' ? '/trainee-driver-management' : '',
+  assetPrefix: process.env.NODE_ENV === 'production' ? '/trainee-driver-management/' : '',
 }
 
 module.exports = nextConfig 
