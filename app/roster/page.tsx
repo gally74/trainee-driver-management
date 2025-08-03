@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useDriverStore } from '@/store/driverStore';
 import { RosterEntry } from '@/types';
 import { detectRouteType } from '@/utils/routeDetection';
-import { exportWeeklyRosterPDF, exportTrainingReportPDF, exportDriverHistoryPDF } from '@/utils/pdfExport';
+import { exportWeeklyRosterPDF, exportTrainingReportPDF, exportDriverHistoryPDF, getAvailableWeeklyRosters } from '@/utils/pdfExport';
 import { ArrowLeft, Plus, Calendar, Clock, MapPin, Download, Edit, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
@@ -23,6 +23,7 @@ function RosterPageContent() {
   const [showEditEntry, setShowEditEntry] = useState(false);
   const [editingEntry, setEditingEntry] = useState<RosterEntry | null>(null);
   const [showProgressUpdate, setShowProgressUpdate] = useState(false);
+  const [showWeeklyRosterSelector, setShowWeeklyRosterSelector] = useState(false);
   const [formData, setFormData] = useState({
     date: '',
     duties: '',
@@ -180,28 +181,23 @@ function RosterPageContent() {
       return;
     }
 
-    // Find the most recent week with entries
-    const sortedEntries = [...rosterEntries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const mostRecentEntry = sortedEntries[0];
-    
-    // Calculate week ending (Sunday) for the most recent entry
-    const entryDate = new Date(mostRecentEntry.date);
-    const dayOfWeek = entryDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    const daysToSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
-    const weekEnding = new Date(entryDate);
-    weekEnding.setDate(entryDate.getDate() + daysToSunday);
-    
-    // Get entries for the week ending on the calculated Sunday
+    // Show weekly roster selector
+    setShowWeeklyRosterSelector(true);
+  };
+
+  const handleExportSpecificWeeklyRoster = (weekEnding: string) => {
+    // Get entries for the specific week
     const weekStart = new Date(weekEnding);
-    weekStart.setDate(weekEnding.getDate() - 6); // Monday
+    weekStart.setDate(weekStart.getDate() - 6); // Monday
     
     const weekEntries = rosterEntries.filter(entry => {
       const entryDate = new Date(entry.date);
-      return entryDate >= weekStart && entryDate <= weekEnding;
+      return entryDate >= weekStart && entryDate <= new Date(weekEnding);
     });
 
-    const doc = exportWeeklyRosterPDF(driver, weekEntries, weekEnding.toISOString().split('T')[0]);
-    doc.save(`${driver.name}-weekly-roster.pdf`);
+    const doc = exportWeeklyRosterPDF(driver, weekEntries, weekEnding);
+    doc.save(`${driver.name}-weekly-roster-${weekEnding}.pdf`);
+    setShowWeeklyRosterSelector(false);
   };
 
   const handleExportTrainingReport = () => {
@@ -609,6 +605,47 @@ function RosterPageContent() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Weekly Roster Selector Modal */}
+      {showWeeklyRosterSelector && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Weekly Roster to Export</h3>
+            
+            <div className="space-y-3">
+              {getAvailableWeeklyRosters(driver, rosterEntries).map((roster) => (
+                <div
+                  key={roster.weekEnding}
+                  className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer"
+                  onClick={() => handleExportSpecificWeeklyRoster(roster.weekEnding)}
+                >
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="font-medium text-gray-900">
+                        {roster.weekStart} - {roster.weekEnd}
+                      </h4>
+                      <p className="text-sm text-gray-600">
+                        {roster.entryCount} entries • {roster.totalHours.toFixed(1)} hours
+                      </p>
+                    </div>
+                    <Download className="h-5 w-5 text-primary-600" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="flex justify-end pt-4">
+              <button
+                type="button"
+                onClick={() => setShowWeeklyRosterSelector(false)}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
