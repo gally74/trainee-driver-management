@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import { Driver, RosterEntry, TrainingProgress } from '@/types';
-import { format } from 'date-fns';
+import { format, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 
 // Helper function to add Irish Rail logo
 function addIrishRailLogo(doc: jsPDF, y: number) {
@@ -24,77 +24,123 @@ function addIrishRailLogo(doc: jsPDF, y: number) {
 export function exportWeeklyRosterPDF(driver: Driver, entries: RosterEntry[], weekEnding: string) {
   const doc = new jsPDF();
   
-  // Add Irish Rail logo at top
-  addIrishRailLogo(doc, 20);
-  
-  // Calculate week ending date
+  // Calculate the week range (Monday to Sunday)
   const weekEndingDate = new Date(weekEnding);
-  const formattedWeekEnding = format(weekEndingDate, 'dd\'st\' MMMM yyyy');
+  const weekStart = startOfWeek(weekEndingDate, { weekStartsOn: 1 }); // Monday
+  const weekEnd = endOfWeek(weekEndingDate, { weekStartsOn: 1 }); // Sunday
   
-  // Title
-  doc.setFontSize(16);
+  // Format the date range for the title
+  const startDateFormatted = format(weekStart, 'dd MMMM');
+  const endDateFormatted = format(weekEnd, 'dd MMMM yyyy');
+  
+  // Title with driver name and date range
+  doc.setFontSize(18);
   doc.setTextColor(0, 0, 0);
-  doc.text(`Roster Week Ending ${formattedWeekEnding}`, 20, 45);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`${driver.name} Weekly Roster ${startDateFormatted} - ${endDateFormatted}`, 20, 30);
+  doc.setFont('helvetica', 'normal');
   
-  // Create roster table similar to Irish Rail format
-  const startY = 60;
-  let currentY = startY;
+  // Add Irish Rail logo at top right
+  addIrishRailLogo(doc, 25);
   
-  // Table headers with Irish Rail styling
-  const headers = ['PQP Driver', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  let currentY = 50;
+  
+  // Weekly Schedule Table
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Weekly Schedule', 20, currentY);
+  doc.setFont('helvetica', 'normal');
+  currentY += 15;
+  
+  // Table headers
+  const headers = ['Day', 'Book On', 'Book Off', 'Hours'];
   doc.setFontSize(10);
-  doc.setFillColor(200, 230, 200); // Light green background
+  doc.setFillColor(240, 240, 240);
   doc.rect(20, currentY, 170, 10, 'F');
   
   let x = 20;
-  const colWidths = [40, 18, 18, 18, 18, 18, 18, 18];
+  const colWidths = [40, 30, 30, 20];
   
   headers.forEach((header, index) => {
-    doc.setTextColor(0, 0, 0);
-    doc.text(header, x + 2, currentY + 7);
+    doc.setFont('helvetica', 'bold');
+    doc.text(header, x + 5, currentY + 7);
     x += colWidths[index];
   });
   
   currentY += 10;
   
-  // Driver row with light yellow background
-  doc.setFillColor(255, 255, 200); // Light yellow background
-  doc.rect(20, currentY, 170, 10, 'F');
-  
-  x = 20;
-  const driverName = driver.name;
-  doc.text(driverName, x + 2, currentY + 7);
-  x += colWidths[0];
+  // Get all days of the week
+  const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
   
   // Fill in the week's schedule
-  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  daysOfWeek.forEach((day, index) => {
+  weekDays.forEach(day => {
+    const dayName = format(day, 'EEEE');
     const dayEntry = entries.find(entry => {
-      const entryDay = format(new Date(entry.date), 'EEEE');
-      return entryDay === day;
+      const entryDate = new Date(entry.date);
+      return format(entryDate, 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd');
     });
     
-    if (dayEntry) {
-      const timeRange = `${dayEntry.bookOnTime || 'N/A'}-${dayEntry.bookOffTime || 'N/A'}`;
-      doc.text(timeRange, x + 2, currentY + 7);
-    } else {
-      doc.text('Rest Day', x + 2, currentY + 7);
+    // Alternate row colors
+    if (weekDays.indexOf(day) % 2 === 0) {
+      doc.setFillColor(248, 249, 250);
+      doc.rect(20, currentY, 170, 10, 'F');
     }
-    x += colWidths[index + 1];
+    
+    x = 20;
+    
+    // Day name
+    doc.setFont('helvetica', 'bold');
+    doc.text(dayName, x + 5, currentY + 7);
+    x += colWidths[0];
+    
+    if (dayEntry) {
+      // Book on time
+      doc.setFont('helvetica', 'normal');
+      doc.text(dayEntry.bookOnTime || 'N/A', x + 5, currentY + 7);
+      x += colWidths[1];
+      
+      // Book off time
+      doc.text(dayEntry.bookOffTime || 'N/A', x + 5, currentY + 7);
+      x += colWidths[2];
+      
+      // Calculate hours
+      if (dayEntry.bookOnTime && dayEntry.bookOffTime) {
+        const onTime = dayEntry.bookOnTime;
+        const offTime = dayEntry.bookOffTime;
+        const hours = calculateHours(onTime, offTime);
+        doc.text(hours.toString(), x + 5, currentY + 7);
+      } else {
+        doc.text('N/A', x + 5, currentY + 7);
+      }
+    } else {
+      // Rest day
+      doc.setFont('helvetica', 'normal');
+      doc.text('Rest Day', x + 5, currentY + 7);
+      x += colWidths[1];
+      doc.text('Rest Day', x + 5, currentY + 7);
+      x += colWidths[2];
+      doc.text('0', x + 5, currentY + 7);
+    }
+    
+    currentY += 10;
   });
   
   currentY += 20;
   
-  // Detailed daily descriptions section
-  doc.setFontSize(12);
-  doc.setTextColor(0, 0, 0);
+  // Detailed Duties Section
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text(driver.name, 20, currentY);
+  doc.text('Detailed Duties', 20, currentY);
   doc.setFont('helvetica', 'normal');
-  currentY += 10;
+  currentY += 15;
   
   // Add detailed descriptions for each day
-  const sortedEntries = entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const sortedEntries = entries
+    .filter(entry => {
+      const entryDate = new Date(entry.date);
+      return entryDate >= weekStart && entryDate <= weekEnd;
+    })
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   
   sortedEntries.forEach(entry => {
     if (currentY > 250) {
@@ -105,49 +151,99 @@ export function exportWeeklyRosterPDF(driver: Driver, entries: RosterEntry[], we
     const dayName = format(new Date(entry.date), 'EEEE');
     const date = format(new Date(entry.date), 'dd/MM/yyyy');
     
-    // Format the duty description similar to Irish Rail format
-    let dutyDescription = `${dayName}-book on duty ${entry.bookOnTime || 'N/A'}`;
+    // Day header
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`${dayName} - ${date}`, 20, currentY);
+    doc.setFont('helvetica', 'normal');
+    currentY += 8;
     
+    // Booking times
+    doc.setFontSize(10);
+    doc.text(`Book On: ${entry.bookOnTime || 'N/A'} | Book Off: ${entry.bookOffTime || 'N/A'}`, 25, currentY);
+    currentY += 8;
+    
+    // Duties description
     if (entry.duties) {
-      // Clean up the duties text to match Irish Rail format
-      let duties = entry.duties;
+      const duties = entry.duties;
+      const maxWidth = 160;
+      const lines = doc.splitTextToSize(duties, maxWidth);
       
-      // Remove common prefixes if they exist
-      duties = duties.replace(/^\d{2}:\d{2}\s*Book On\s*-\s*/i, '');
-      duties = duties.replace(/^\d{2}:\d{2}\s*Book On\s*/i, '');
-      
-      // Add travel and route information
-      if (entry.routeSegments && entry.routeSegments.length > 0) {
-        const routes = entry.routeSegments.map(segment => segment.route).join(' ');
-        dutyDescription += ` travel ${routes}`;
-      } else {
-        dutyDescription += ` travel ${duties}`;
-      }
+      lines.forEach((line: string) => {
+        doc.text(line, 25, currentY);
+        currentY += 5;
+      });
     }
     
-    // Bold the day name
-    doc.setFont('helvetica', 'bold');
-    doc.text(dayName, 20, currentY);
-    doc.setFont('helvetica', 'normal');
+    // Route information
+    if (entry.routeSegments && entry.routeSegments.length > 0) {
+      const routes = entry.routeSegments.map(segment => segment.route).join(', ');
+      doc.setFont('helvetica', 'italic');
+      doc.text(`Routes: ${routes}`, 25, currentY);
+      doc.setFont('helvetica', 'normal');
+      currentY += 5;
+    }
     
-    // Add the rest of the description
-    const descriptionX = 20 + doc.getTextWidth(dayName) + 5;
-    doc.text(dutyDescription.substring(dayName.length + 1), descriptionX, currentY);
-    
-    currentY += 8;
+    currentY += 10;
   });
   
-  // Add disclaimer note
+  // Add rest days that don't have entries
+  weekDays.forEach(day => {
+    const dayEntry = entries.find(entry => {
+      const entryDate = new Date(entry.date);
+      return format(entryDate, 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd');
+    });
+    
+    if (!dayEntry) {
+      if (currentY > 250) {
+        doc.addPage();
+        currentY = 20;
+      }
+      
+      const dayName = format(day, 'EEEE');
+      const date = format(day, 'dd/MM/yyyy');
+      
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${dayName} - ${date}`, 20, currentY);
+      doc.setFont('helvetica', 'normal');
+      currentY += 8;
+      
+      doc.setFontSize(10);
+      doc.text('Rest Day - No duties assigned', 25, currentY);
+      currentY += 15;
+    }
+  });
+  
+  // Add footer note
   currentY += 10;
   doc.setFontSize(10);
   doc.setTextColor(255, 0, 0); // Red text
-  doc.text('Please Note Roster Subject to change, Check Daily Sheets', 20, currentY);
+  doc.text('Please Note: Roster subject to change. Check daily sheets for updates.', 20, currentY);
   
   // Add Irish Rail logo at bottom
   currentY += 20;
   addIrishRailLogo(doc, currentY);
   
   return doc;
+}
+
+// Helper function to calculate hours between two times
+function calculateHours(onTime: string, offTime: string): number {
+  const parseTime = (timeStr: string) => {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours + minutes / 60;
+  };
+  
+  const onHours = parseTime(onTime);
+  const offHours = parseTime(offTime);
+  
+  // Handle overnight shifts
+  if (offHours < onHours) {
+    return (24 - onHours) + offHours;
+  }
+  
+  return offHours - onHours;
 }
 
 export function exportTrainingReportPDF(driver: Driver, progress: TrainingProgress, entries: RosterEntry[]) {
